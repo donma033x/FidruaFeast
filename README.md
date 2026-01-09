@@ -11,30 +11,37 @@
     |_______________|              \_______/
 ```
 
-## What is this?
+## 🤔 What is this?
 
-FidruaFeast is a resource consumer tool that keeps your VPS alive by consuming idle CPU, memory, and disk resources. When your system needs resources back, Fidrua will spit them out!
+Some VPS providers reclaim "idle" resources from your server. FidruaFeast solves this by having Fidrua (a hungry Samoyed 🐕) munch on your idle CPU, memory, and disk - keeping them occupied so they won't be taken away.
 
-## Features
+When your system actually needs those resources, Fidrua will spit them back out!
 
-- 🦴 **CPU Control** - Consume idle CPU cycles
-- 🦴 **Memory Control** - Allocate unused memory
-- 🦴 **Disk Control** - Fill up unused disk space
-- 🐕 **Auto-adjust** - Automatically release resources when needed
+## ✨ Features
+
+- 🦴 **CPU Munching** - Consume idle CPU cycles
+- 🦴 **Memory Munching** - Allocate unused memory  
+- 🦴 **Disk Munching** - Fill up unused disk space
+- 🔄 **Auto-adjust** - Automatically release resources when needed
 - 📊 **Live Status** - Watch Fidrua eat in real-time
 - 🏠 **Systemd Service** - Run as a background service
+- 🎛️ **Management Menu** - Easy interactive control
 
-## Installation
+## 📦 Installation
 
-### Download Binary
+### Quick Install (Recommended)
 
 ```bash
 # Download latest release
 wget https://github.com/donma033x/fidruafeast/releases/latest/download/fidruafeast-linux-amd64.tar.gz
+
+# Extract
 tar -xzf fidruafeast-linux-amd64.tar.gz
+
+# Make executable
 chmod +x fidruafeast
 
-# Install as service
+# Install as service (will auto-start)
 sudo ./fidruafeast -install
 ```
 
@@ -46,24 +53,30 @@ cd fidruafeast
 go build -o fidruafeast main.go
 ```
 
-## Usage
+## 🚀 Usage
+
+### Basic Commands
 
 ```bash
 # Show help
 fidruafeast -h
 
-# Run with defaults (keep 45% free)
+# Run interactively (keep 45% free by default)
 fidruafeast
 
-# Custom targets
+# Custom resource targets
 fidruafeast -cpu 30 -mem 20 -disk 40
 
 # Run in background
 fidruafeast -daemon
 
-# Check status
+# Check Fidrua's status
 fidruafeast -status
+```
 
+### Service Management
+
+```bash
 # Install as systemd service
 sudo fidruafeast -install
 
@@ -71,22 +84,81 @@ sudo fidruafeast -install
 sudo fidruafeast -uninstall
 ```
 
-## Options
+### Interactive Menu
+
+When Fidrua is already running, launching `fidruafeast` shows a management menu:
+
+```
+⚡ Fidrua is already munching!
+
+── Management Menu ──
+
+[1] Watch Fidrua eat    # Live status monitoring
+[2] Stop Fidrua         # Stop the service
+[3] Wake up Fidrua      # Restart the service
+[4] Release Fidrua      # Uninstall service
+[q] Quit
+```
+
+## ⚙️ Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-cpu` | Keep this % CPU free | 45 |
-| `-mem` | Keep this % Memory free | 45 |
-| `-disk` | Keep this % Disk free | 45 |
-| `-daemon` | Run in background mode | false |
-| `-status` | Watch Fidrua's status | - |
-| `-install` | Adopt Fidrua (systemd) | - |
-| `-uninstall` | Release Fidrua | - |
+| `-cpu <N>` | Keep N% CPU free for you | 45 |
+| `-mem <N>` | Keep N% Memory free for you | 45 |
+| `-disk <N>` | Keep N% Disk free for you | 45 |
+| `-daemon` | Run in background mode | - |
+| `-status` | Watch Fidrua's tummy | - |
+| `-install` | Adopt Fidrua (systemd service) | - |
+| `-uninstall` | Release Fidrua to the wild | - |
+| `-h` | Show help | - |
 
-## Why "Fidrua"?
+## 📊 Status Display
 
-Fidrua is a Samoyed 🐕 who loves to munch on things. In this case, he munches on your idle server resources!
+```
+🐕 FIDRUA'S APPETITE
+  Saving for you -> CPU: 45.0% | MEM: 45.0% | DISK: 45.0%
+  CPU Cores: 2
 
-## License
+🦴 FIDRUA'S TUMMY
+  RESOURCE     OTHERS     FIDRUA      TOTAL     TARGET
+  --------     ------     ------      -----     ------
+  CPU            5.0%       50.0%       55.0%       55.0%
+  Memory        30.0%       25.0%       55.0%       55.0%
+  Disk          40.0%       15.0%       55.0%       55.0%
 
-MIT License
+📊 DETAILS
+  Memory: 8.0 GB total | 2.4 GB others | 2.0 GB Fidrua ate
+  Disk:   50 GB total | 20 GB others | 7.5 GB Fidrua ate
+```
+
+## 💻 System Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| **OS** | Linux (kernel 2.6.23+) |
+| **Arch** | amd64, arm64 |
+| **Dependencies** | None (statically linked) |
+| **Service Manager** | systemd (for `-install`) |
+
+### Supported Distributions
+
+✅ Ubuntu 16.04+, Debian 8+, CentOS 7+, RHEL 7+, Fedora, Arch Linux, and most modern Linux distributions.
+
+⚠️ **Note**: The `-install` feature requires systemd. For non-systemd systems (Alpine, older distros), run manually with `nohup ./fidruafeast -daemon &`
+
+## 🐕 Why "Fidrua"?
+
+Fidrua is a Samoyed who loves to munch on things. He's fluffy, friendly, and always hungry - perfect for eating up those idle resources! When you need them back, he'll happily spit them out.
+
+## 📝 License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to open issues or submit pull requests.
+
+---
+
+Made with ❤️ by [donma033x](https://github.com/donma033x)
