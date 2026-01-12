@@ -578,7 +578,12 @@ func (rc *ResourceConsumer) getStatusString() string {
 	// Show per-disk details
 	if len(rc.disks) >= 1 {
 		sb.WriteString("\n")
-		sb.WriteString("  \033[2m💾 DISKS\033[0m\n")
+		sb.WriteString("  \033[2m💾 DISKS\033[0m")
+		// Show global overflow warning
+		if totalDisk > 0 && otherDiskPct >= (100-rc.targetFreeDisk) {
+			sb.WriteString(" \033[33m(global usage already over target)\033[0m")
+		}
+		sb.WriteString("\n")
 		targetUsagePct := 100 - rc.targetFreeDisk
 		rc.mu.Lock()
 		for _, disk := range rc.disks {
@@ -588,7 +593,7 @@ func (rc *ResourceConsumer) getStatusString() string {
 				usedPct := float64(otherUsed+uint64(disk.Used)) / float64(total) * 100
 				if otherPct >= targetUsagePct {
 					// Already over target, show warning
-					sb.WriteString(fmt.Sprintf("    %-12s %s total | %.1f%% used | \033[33mskipped (already %.1f%%)\033[0m\n",
+					sb.WriteString(fmt.Sprintf("    %-12s %s total | %.1f%% used | \033[33mfull (%.1f%%)\033[0m\n",
 						disk.MountPoint, formatBytes(total), usedPct, otherPct))
 				} else {
 					sb.WriteString(fmt.Sprintf("    %-12s %s total | %.1f%% used | %s Fidrua ate\n",
@@ -646,22 +651,126 @@ func (rc *ResourceConsumer) adjust() {
 		rc.setMemory(weNeedBytes)
 	}
 
-	// === Disk (per-disk adjustment) ===
+	// === Disk (global calculation with proportional distribution) ===
 	rc.mu.Lock()
+	rc.adjustDisksGlobal()
+	rc.mu.Unlock()
+}
+
+// adjustDisksGlobal calculates disk consumption globally and distributes proportionally
+func (rc *ResourceConsumer) adjustDisksGlobal() {
+	targetUsagePct := 100 - rc.targetFreeDisk
+
+	// Step 1: Calculate global totals
+	var globalTotal, globalOtherUsed uint64
+	type diskState struct {
+		disk      *DiskInfo
+		total     uint64
+		otherUsed uint64
+		maxCanEat int64 // max bytes this disk can consume (to reach target)
+		isTmp     bool  // is this the /tmp disk?
+	}
+	var states []diskState
+
 	for _, disk := range rc.disks {
-		totalDisk, otherDiskUsed, err := rc.getDiskInfo(disk)
-		if err == nil && totalDisk > 0 {
-			otherDiskPct := float64(otherDiskUsed) / float64(totalDisk) * 100
-			targetUsagePct := 100 - rc.targetFreeDisk
-			weNeedPct := targetUsagePct - otherDiskPct
-			if weNeedPct < 0 {
-				weNeedPct = 0
+		total, otherUsed, err := rc.getDiskInfo(disk)
+		if err != nil || total == 0 {
+			continue
+		}
+		globalTotal += total
+		globalOtherUsed += otherUsed
+
+		// Max this disk can eat = target% of total - current other usage
+		maxCanEat := int64(float64(total)*targetUsagePct/100) - int64(otherUsed)
+		if maxCanEat < 0 {
+			maxCanEat = 0
+		}
+
+		isTmp := strings.HasPrefix(disk.File, "/tmp") || strings.Contains(disk.File, "/tmp/")
+		states = append(states, diskState{
+			disk:      disk,
+			total:     total,
+			otherUsed: otherUsed,
+			maxCanEat: maxCanEat,
+			isTmp:     isTmp,
+		})
+	}
+
+	if len(states) == 0 {
+		return
+	}
+
+	// Step 2: Calculate global need
+	globalTargetUsed := int64(float64(globalTotal) * targetUsagePct / 100)
+	globalNeed := globalTargetUsed - int64(globalOtherUsed)
+	if globalNeed <= 0 {
+		// Already over target globally, clear all
+		for _, s := range states {
+			rc.setDiskForOne(s.disk, 0)
+		}
+		return
+	}
+
+	// Step 3: Initialize allocation map
+	allocation := make(map[*DiskInfo]int64)
+	for _, s := range states {
+		allocation[s.disk] = 0
+	}
+
+	// Step 4: Priority - fill /tmp disk first
+	remaining := globalNeed
+	for i := range states {
+		if states[i].isTmp && states[i].maxCanEat > 0 {
+			eat := remaining
+			if eat > states[i].maxCanEat {
+				eat = states[i].maxCanEat
 			}
-			weNeedBytes := int64(weNeedPct / 100 * float64(totalDisk))
-			rc.setDiskForOne(disk, weNeedBytes)
+			allocation[states[i].disk] = eat
+			remaining -= eat
+			states[i].maxCanEat = 0 // mark as full
+			break
 		}
 	}
-	rc.mu.Unlock()
+
+	// Step 5: Iteratively distribute remaining to other disks by capacity ratio
+	for remaining > 0 {
+		// Calculate total capacity of disks that can still eat
+		var availableCapacity uint64
+		for _, s := range states {
+			if s.maxCanEat > 0 {
+				availableCapacity += s.total
+			}
+		}
+		if availableCapacity == 0 {
+			break // No disk can eat more
+		}
+
+		// Distribute by ratio
+		distributed := int64(0)
+		for i := range states {
+			if states[i].maxCanEat <= 0 {
+				continue
+			}
+			// This disk's share based on capacity ratio
+			share := int64(float64(remaining) * float64(states[i].total) / float64(availableCapacity))
+			if share > states[i].maxCanEat {
+				share = states[i].maxCanEat
+			}
+			allocation[states[i].disk] += share
+			states[i].maxCanEat -= share
+			distributed += share
+		}
+
+		if distributed == 0 {
+			break // No progress, avoid infinite loop
+		}
+		remaining -= distributed
+	}
+
+	// Step 6: Apply allocations
+	for _, s := range states {
+		rc.setDiskForOne(s.disk, allocation[s.disk])
+	}
 }
 
 func (rc *ResourceConsumer) cleanup() {
